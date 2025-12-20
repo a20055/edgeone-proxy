@@ -1,47 +1,33 @@
-/**
- * This is the final, correct version of the proxy function.
- * It leverages a professional third-party proxy to handle anti-bot measures.
- */
-export async function onRequest(context) {
-    const { request } = context;
+async function handleRequest(event) {
+  const { request } = event;
+  const urlInfo = new URL(request.url);
+  
+  const proxyRequest = new Request(`https://google.com${urlInfo.pathname}${urlInfo.search}`, {
+    method: request.method,
+    body: request.body,
+    headers: request.headers,
+    copyHeaders: true,
+  });
+  proxyRequest.headers.set('Host', 'google.com');
+  
+  // fetch 反向代理
+  const response = await fetch(proxyRequest);
 
-    try {
-        const requestUrl = new URL(request.url);
-        const targetUrlParam = requestUrl.searchParams.get('url');
+  /** 添加自定义响应头 **/
+  // 指定哪些源（origin）允许访问资源
+  response.headers.append('Access-Control-Allow-Origin', '*');
+  // 指定哪些 HTTP 方法（如 GET, POST 等）允许访问资源
+  response.headers.append('Access-Control-Allow-Methods', 'GET,POST');
+  // 指定了哪些 HTTP 头可以在正式请求头中出现
+  response.headers.append('Access-Control-Allow-Headers', 'Authorization');
+  // 预检请求的结果可以被缓存多久
+  response.headers.append('Access-Control-Max-Age', '86400');
+  
 
-        if (!targetUrlParam) {
-            return new Response("Query parameter 'url' is missing.", { status: 400 });
-        }
-
-        // **CRITICAL FIX: Use a professional proxy service.**
-        const proxyServiceUrl = 'https://cors-anywhere.herokuapp.com/';
-        const actualUrlStr = proxyServiceUrl + targetUrlParam;
-
-        // We can now use a much simpler request, as the proxy service will handle headers.
-        const modifiedRequest = new Request(actualUrlStr, {
-            headers: {
-                'Origin': requestUrl.origin, // The proxy service requires an Origin header.
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            method: request.method,
-            body: (request.method === 'POST' || request.method === 'PUT') ? request.body : null,
-            redirect: 'follow' // We can let the proxy service handle redirects.
-        });
-
-        const response = await fetch(modifiedRequest);
-
-        // We still need to filter Set-Cookie to avoid browser security issues.
-        const finalHeaders = new Headers(response.headers);
-        finalHeaders.delete('Set-Cookie');
-
-        // Since the third-party proxy handles all content, we don't need our own HTML rewriter.
-        return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: finalHeaders
-        });
-
-    } catch (error) {
-        return new Response(`Proxy Error: ${error.message}`, { status: 500 });
-    }
+  
+  return response;
 }
+
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event));
+});
